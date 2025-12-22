@@ -1,0 +1,5 @@
+{
+  "name": "TCM Supply Chain Link - AI Edition",
+  "description": "Mobile-first digital management system for TCM packaging with integrated Gemini AI Image Editing.",
+  "requestFramePermissions": ["camera"]
+}

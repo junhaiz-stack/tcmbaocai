@@ -1,0 +1,47 @@
+version: '3.8'
+
+services:
+  # MySQL 数据库
+  db:
+    image: mysql:8.0
+    container_name: tcm_db
+    environment:
+      MYSQL_DATABASE: tcm_supply_chain
+      MYSQL_USER: tcm_user
+      MYSQL_PASSWORD: tcm_password
+      MYSQL_ROOT_PASSWORD: root_password
+    volumes:
+      - mysql_data:/var/lib/mysql
+    ports:
+      - "3306:3306"
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-u", "tcm_user", "-ptcm_password"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # 后端API服务
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: tcm_backend
+    environment:
+      DATABASE_URL: mysql://tcm_user:tcm_password@db:3306/tcm_supply_chain
+      PORT: 3001
+      NODE_ENV: production
+      CORS_ORIGIN: http://localhost:5173
+    ports:
+      - "3001:3001"
+    depends_on:
+      db:
+        condition: service_healthy
+    volumes:
+      - ./backend:/app
+      - /app/node_modules
+    command: sh -c "npm run db:generate && npm run db:push && npm run db:seed && npm start"
+
+volumes:
+  mysql_data:
+
+

@@ -1,0 +1,46 @@
+# 依赖目录
+node_modules
+npm-debug.log
+yarn-error.log
+
+# 构建输出
+dist
+build
+*.log
+
+# 环境变量文件（生产环境需要单独配置）
+.env
+.env.local
+.env.*.local
+
+# Git
+.git
+.gitignore
+.gitattributes
+
+# IDE
+.vscode
+.idea
+*.swp
+*.swo
+*~
+
+# 文档
+*.md
+!README.md
+
+# 测试文件
+**/__tests__
+**/*.test.*
+**/*.spec.*
+
+# 其他
+.DS_Store
+Thumbs.db
+*.tmp
+*.temp
+
+# 开发工具
+test-*.js
+*.example
+
