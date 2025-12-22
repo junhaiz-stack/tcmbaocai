@@ -12,11 +12,11 @@ async function updateImageUrls() {
   try {
     console.log('开始更新产品图片URL...');
 
-    // 获取所有产品
+    // 获取所有产品（image 字段是必需的，所以不需要过滤 null）
     const products = await prisma.product.findMany({
       where: {
         image: {
-          not: null,
+          not: '',
         },
       },
     });
