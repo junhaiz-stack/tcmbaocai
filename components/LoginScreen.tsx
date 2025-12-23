@@ -1,6 +1,6 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { User, UserRole } from '../types';
-import { Package, ShieldCheck, Factory, Building2, Info } from 'lucide-react';
+import { Package, ShieldCheck, Factory, Building2, Info, Download, Smartphone } from 'lucide-react';
 import { Button } from './Button';
 import { apiService } from '../src/services/api';
 import { SystemIntroModal } from './SystemIntroModal';
@@ -17,6 +17,12 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({ users, onLogin }) => {
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
   const [isIntroModalOpen, setIsIntroModalOpen] = useState(false);
+  
+  // PWA 安装相关状态
+  const [deferredPrompt, setDeferredPrompt] = useState<any>(null);
+  const [isInstallable, setIsInstallable] = useState(false);
+  const [isIOS, setIsIOS] = useState(false);
+  const [showIOSInstructions, setShowIOSInstructions] = useState(false);
 
   React.useEffect(() => {
     // 根据角色设置默认手机号
@@ -25,6 +31,39 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({ users, onLogin }) => {
       setPhone(defaultUser.phone);
     }
   }, [selectedRole, users]);
+
+  // PWA 安装事件监听
+  useEffect(() => {
+    // 检测是否为 iOS 设备
+    const iOS = /iPad|iPhone|iPod/.test(navigator.userAgent) && !(window as any).MSStream;
+    setIsIOS(iOS);
+
+    // 监听 beforeinstallprompt 事件（Chrome/Edge）
+    const handleBeforeInstallPrompt = (e: Event) => {
+      e.preventDefault();
+      setDeferredPrompt(e);
+      setIsInstallable(true);
+    };
+
+    // 监听 appinstalled 事件（安装成功后）
+    const handleAppInstalled = () => {
+      setIsInstallable(false);
+      setDeferredPrompt(null);
+    };
+
+    window.addEventListener('beforeinstallprompt', handleBeforeInstallPrompt);
+    window.addEventListener('appinstalled', handleAppInstalled);
+
+    // 检查是否已经安装（standalone 模式）
+    if (window.matchMedia('(display-mode: standalone)').matches || (window.navigator as any).standalone) {
+      setIsInstallable(false);
+    }
+
+    return () => {
+      window.removeEventListener('beforeinstallprompt', handleBeforeInstallPrompt);
+      window.removeEventListener('appinstalled', handleAppInstalled);
+    };
+  }, []);
 
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -53,6 +92,33 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({ users, onLogin }) => {
       setError(err.message || '登录失败，请检查手机号和角色');
     } finally {
       setLoading(false);
+    }
+  };
+
+  // 处理添加到桌面
+  const handleInstallClick = async () => {
+    if (isIOS) {
+      // iOS Safari 需要手动添加
+      setShowIOSInstructions(true);
+      return;
+    }
+
+    if (deferredPrompt) {
+      // 显示安装提示
+      deferredPrompt.prompt();
+      
+      // 等待用户响应
+      const { outcome } = await deferredPrompt.userChoice;
+      
+      if (outcome === 'accepted') {
+        console.log('用户接受了安装提示');
+      } else {
+        console.log('用户拒绝了安装提示');
+      }
+      
+      // 清除保存的提示
+      setDeferredPrompt(null);
+      setIsInstallable(false);
     }
   };
 
@@ -176,15 +242,24 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({ users, onLogin }) => {
 
             {/* Test Accounts Info */}
             <div className="mt-8 text-center">
-              <div className="text-xs text-gray-400 mb-2">
-                测试账号（手机号 + 角色）：
-              </div>
-              <div className="text-xs text-gray-500 space-y-1">
-                <div>饮片厂：13800138001</div>
-                <div>平台方：13900139000</div>
-                <div>供应商：13600136003</div>
+              <div className="text-xs text-gray-400">
+                测试服，账号已固定，密码随意
               </div>
             </div>
+
+            {/* 添加到桌面按钮 */}
+            {(isInstallable || isIOS) && (
+              <div className="mt-6">
+                <button
+                  type="button"
+                  onClick={handleInstallClick}
+                  className="w-full flex items-center justify-center gap-2 px-4 py-3 bg-gradient-to-r from-emerald-500 to-blue-500 text-white rounded-xl font-bold text-sm shadow-lg shadow-emerald-500/30 hover:shadow-xl transition-all active:scale-95"
+                >
+                  <Download className="w-5 h-5" />
+                  添加到桌面
+                </button>
+              </div>
+            )}
           </div>
         </div>
       </div>
@@ -194,6 +269,34 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({ users, onLogin }) => {
         open={isIntroModalOpen} 
         onClose={() => setIsIntroModalOpen(false)} 
       />
+
+      {/* iOS 安装提示弹窗 */}
+      {showIOSInstructions && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-6 bg-black/50 backdrop-blur-sm">
+          <div className="bg-white rounded-3xl shadow-2xl max-w-sm w-full p-6 animate-in zoom-in-95 duration-200">
+            <div className="flex items-center gap-3 mb-4">
+              <div className="bg-emerald-100 p-2 rounded-xl">
+                <Smartphone className="w-6 h-6 text-emerald-600" />
+              </div>
+              <h3 className="text-lg font-black text-slate-900">添加到主屏幕</h3>
+            </div>
+            <div className="space-y-3 text-sm text-slate-600 mb-6">
+              <p className="font-bold">请按照以下步骤操作：</p>
+              <ol className="space-y-2 list-decimal list-inside">
+                <li>点击浏览器底部的<span className="font-black text-emerald-600">分享</span>按钮</li>
+                <li>在分享菜单中选择<span className="font-black text-emerald-600">"添加到主屏幕"</span></li>
+                <li>点击<span className="font-black text-emerald-600">"添加"</span>完成安装</li>
+              </ol>
+            </div>
+            <button
+              onClick={() => setShowIOSInstructions(false)}
+              className="w-full py-3 bg-emerald-600 text-white rounded-xl font-black text-sm shadow-lg shadow-emerald-500/30 active:scale-95 transition-all"
+            >
+              我知道了
+            </button>
+          </div>
+        </div>
+      )}
     </div>
   );
 };

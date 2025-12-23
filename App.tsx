@@ -38,8 +38,22 @@ function AppContent() {
     try {
       setLoading(true);
       setError(null);
+      
+      // 根据用户角色构建订单查询参数
+      let ordersParams: { supplierId?: string; manufacturerId?: string } | undefined = undefined;
+      if (currentUser) {
+        if (currentUser.role === UserRole.SUPPLIER) {
+          // 供应商只能看到自己包材的订单
+          ordersParams = { supplierId: currentUser.id };
+        } else if (currentUser.role === UserRole.MANUFACTURER) {
+          // 制造商只能看到自己下的订单
+          ordersParams = { manufacturerId: currentUser.id };
+        }
+        // PLATFORM 和 GENERAL_MANAGER 不传递过滤参数，查看所有订单
+      }
+      
       const [ordersData, productsData, usersData] = await Promise.all([
-        apiService.getOrders(),
+        apiService.getOrders(ordersParams),
         apiService.getProducts(),
         apiService.getUsers(),
       ]);

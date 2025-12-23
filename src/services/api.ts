@@ -204,7 +204,7 @@ class ApiService {
   }
 
   // ========== 订单相关 ==========
-  async getOrders(params?: { status?: string; manufacturerId?: string; manufacturerName?: string }) {
+  async getOrders(params?: { status?: string; manufacturerId?: string; manufacturerName?: string; supplierId?: string }) {
     const query = params ? `?${new URLSearchParams(params as any)}` : '';
     return this.request<any[]>(`/orders${query}`);
   }

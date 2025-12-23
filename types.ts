@@ -61,6 +61,7 @@ export interface LogisticsInfo {
 
 export interface Order {
   id: string;
+  manufacturerId?: string; // 制造商ID（用于数据隔离）
   manufacturerName: string; // Who ordered
   productId: string;
   productName: string;

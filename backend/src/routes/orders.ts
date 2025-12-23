@@ -7,7 +7,7 @@ const prisma = new PrismaClient();
 // 获取订单列表
 router.get('/', async (req, res) => {
   try {
-    const { status, manufacturerId, manufacturerName } = req.query;
+    const { status, manufacturerId, manufacturerName, supplierId } = req.query;
 
     const where: any = {};
     if (status) {
@@ -18,6 +18,12 @@ router.get('/', async (req, res) => {
     }
     if (manufacturerName) {
       where.manufacturerName = manufacturerName as string;
+    }
+    // 如果提供了 supplierId，通过关联 Product 表过滤订单
+    if (supplierId) {
+      where.product = {
+        supplierId: supplierId as string
+      };
     }
 
     const orders = await prisma.order.findMany({
@@ -41,6 +47,7 @@ router.get('/', async (req, res) => {
       success: true,
       data: orders.map(order => ({
         id: order.id,
+        manufacturerId: order.manufacturerId,
         manufacturerName: order.manufacturerName,
         productId: order.productId,
         productName: order.productName,
@@ -101,6 +108,7 @@ router.get('/:id', async (req, res) => {
       success: true,
       data: {
         id: order.id,
+        manufacturerId: order.manufacturerId,
         manufacturerName: order.manufacturerName,
         productId: order.productId,
         productName: order.productName,
@@ -183,6 +191,7 @@ router.post('/', async (req, res) => {
       success: true,
       data: {
         id: order.id,
+        manufacturerId: order.manufacturerId,
         manufacturerName: order.manufacturerName,
         productId: order.productId,
         productName: order.productName,
@@ -231,6 +240,7 @@ router.patch('/:id/status', async (req, res) => {
       success: true,
       data: {
         id: order.id,
+        manufacturerId: order.manufacturerId,
         manufacturerName: order.manufacturerName,
         productId: order.productId,
         productName: order.productName,
@@ -318,6 +328,7 @@ router.post('/:id/ship', async (req, res) => {
       success: true,
       data: {
         id: updatedOrder!.id,
+        manufacturerId: updatedOrder!.manufacturerId,
         manufacturerName: updatedOrder!.manufacturerName,
         productId: updatedOrder!.productId,
         productName: updatedOrder!.productName,
@@ -361,6 +372,7 @@ router.post('/:id/confirm', async (req, res) => {
       success: true,
       data: {
         id: order.id,
+        manufacturerId: order.manufacturerId,
         manufacturerName: order.manufacturerName,
         productId: order.productId,
         productName: order.productName,

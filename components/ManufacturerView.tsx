@@ -38,7 +38,10 @@ export const ManufacturerView: React.FC<ManufacturerViewProps> = ({
   const [selectedOrder, setSelectedOrder] = useState<Order | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
 
-  const myOrders = orders.filter(o => o.manufacturerName === currentUser.name);
+  // 使用 manufacturerId 进行数据隔离（如果存在），否则回退到 manufacturerName
+  const myOrders = orders.filter(o => 
+    o.manufacturerId ? o.manufacturerId === currentUser.id : o.manufacturerName === currentUser.name
+  );
   const suppliers = users.filter(u => u.role === UserRole.SUPPLIER);
 
   // Filter products: Must be ACTIVE and match selected supplier (if any)
@@ -60,7 +63,8 @@ export const ManufacturerView: React.FC<ManufacturerViewProps> = ({
     if (!product) return 0;
     
     // 计算 PENDING 和 APPROVED 状态订单占用的库存
-    const reservedStock = orders
+    // 使用 myOrders 确保只计算当前制造商的订单占用
+    const reservedStock = myOrders
       .filter(o => 
         o.productId === productId && 
         (o.status === OrderStatus.PENDING || o.status === OrderStatus.APPROVED)

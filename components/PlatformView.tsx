@@ -257,6 +257,89 @@ export const PlatformView: React.FC<PlatformViewProps> = ({
     ).values()
   ) as User[];
 
+  // 计算某个产品的已下单数量（PENDING + APPROVED 状态的订单数量之和）
+  const calculateOrderedQuantity = (productId: string): number => {
+    return orders
+      .filter(o => 
+        o.productId === productId && 
+        (o.status === OrderStatus.PENDING || o.status === OrderStatus.APPROVED)
+      )
+      .reduce((sum, o) => sum + o.quantity, 0);
+  };
+
+  // 计算包材统计（按包材厂分组）
+  const calculateSupplierStatistics = () => {
+    const suppliers = users.filter(u => u.role === UserRole.SUPPLIER);
+    
+    return suppliers.map(supplier => {
+      // 该包材厂的产品
+      const supplierProducts = products.filter(p => p.supplierId === supplier.id);
+      
+      // 该包材厂的订单（通过产品关联）
+      const supplierOrders = orders.filter(o => {
+        const product = products.find(p => p.id === o.productId);
+        return product && product.supplierId === supplier.id;
+      });
+      
+      // 待审批订单数（PENDING状态）
+      const pendingOrders = supplierOrders.filter(o => o.status === OrderStatus.PENDING).length;
+      
+      // 已完成订单数（COMPLETED状态）
+      const completedOrders = supplierOrders.filter(o => o.status === OrderStatus.COMPLETED).length;
+      
+      // 合计订单金额
+      const totalAmount = supplierOrders.reduce((sum, order) => {
+        const product = products.find(p => p.id === order.productId);
+        if (product && product.unitPrice) {
+          return sum + (order.quantity * product.unitPrice);
+        }
+        return sum;
+      }, 0);
+      
+      return {
+        supplierName: supplier.name,
+        productCount: supplierProducts.length,
+        pendingOrderCount: pendingOrders,
+        completedOrderCount: completedOrders,
+        totalAmount: totalAmount
+      };
+    });
+  };
+
+  // 计算饮片厂统计（按饮片厂分组）
+  const calculateManufacturerStatistics = () => {
+    const manufacturers = users.filter(u => u.role === UserRole.MANUFACTURER);
+    
+    return manufacturers.map(manufacturer => {
+      // 该饮片厂的订单
+      const manufacturerOrders = orders.filter(o => o.manufacturerId === manufacturer.id);
+      
+      // 进行中订单数（PENDING + APPROVED状态）
+      const inProgressOrders = manufacturerOrders.filter(o => 
+        o.status === OrderStatus.PENDING || o.status === OrderStatus.APPROVED
+      ).length;
+      
+      // 已完成订单数（COMPLETED状态）
+      const completedOrders = manufacturerOrders.filter(o => o.status === OrderStatus.COMPLETED).length;
+      
+      // 合计订单金额
+      const totalAmount = manufacturerOrders.reduce((sum, order) => {
+        const product = products.find(p => p.id === order.productId);
+        if (product && product.unitPrice) {
+          return sum + (order.quantity * product.unitPrice);
+        }
+        return sum;
+      }, 0);
+      
+      return {
+        manufacturerName: manufacturer.name,
+        inProgressOrderCount: inProgressOrders,
+        completedOrderCount: completedOrders,
+        totalAmount: totalAmount
+      };
+    });
+  };
+
   // Filtered products by supplier & status
   const filteredProducts = products.filter((product) => {
     if (selectedSupplierIds.length > 0 && !selectedSupplierIds.includes(product.supplierId)) {
@@ -714,7 +797,26 @@ export const PlatformView: React.FC<PlatformViewProps> = ({
                      <div className="flex-1 min-w-0">
                         <div className="font-black text-slate-900 truncate">{product.name}</div>
                         <div className="text-[10px] font-bold text-slate-400 mt-1 truncate">厂家: {supplier?.name}</div>
+                        {/* 详细信息行 */}
+                        <div className="mt-2 space-y-1">
+                          <div className="flex flex-wrap items-center gap-x-3 gap-y-0.5 text-[10px]">
+                            <span className="font-bold text-slate-600">
+                              总库存: <span className="text-slate-900">{product.stock.toLocaleString()}</span>
+                            </span>
+                            {product.packageCount !== undefined && product.packageCount !== null && (
+                              <span className="font-bold text-slate-600">
+                                件数: <span className="text-slate-900">{product.packageCount}</span>
+                              </span>
+                            )}
+                            {product.unitPrice && (
+                              <span className="font-bold text-emerald-600">
+                                价格: <span className="text-emerald-700">¥{product.unitPrice.toFixed(2)}</span>
+                              </span>
+                            )}
+                          </div>
+                        </div>
                         <div className="flex justify-between items-center mt-2">
+                          <div className="flex items-center gap-2">
                             {isDelisted ? (
                               <span className="text-[10px] font-bold text-red-600 bg-red-50 px-2 py-0.5 rounded-full">已禁流</span>
                             ) : isInactive ? (
@@ -722,8 +824,11 @@ export const PlatformView: React.FC<PlatformViewProps> = ({
                             ) : (
                               <span className="text-[10px] font-bold text-emerald-600 bg-emerald-50 px-2 py-0.5 rounded-full">正常流通</span>
                             )}
-                            
-                            <button 
+                            <span className="text-[10px] font-bold text-slate-600">
+                              已下单: <span className="text-orange-600">{calculateOrderedQuantity(product.id).toLocaleString()}</span>
+                            </span>
+                          </div>
+                          <button 
                               className={`text-[10px] font-black px-3 py-1.5 rounded-xl border-2 transition-all active:scale-90 ${isDelisted ? 'border-emerald-100 text-emerald-600 bg-emerald-50/50' : 'border-red-100 text-red-600 bg-red-50/50'}`}
                               onClick={() => handleToggleProductStatus(product)}
                             >
@@ -784,6 +889,74 @@ export const PlatformView: React.FC<PlatformViewProps> = ({
                 </div>
               </div>
             ))}
+          </div>
+        </div>
+      )}
+
+      {activeTab === 'statistics' && (
+        <div className="space-y-4 animate-in fade-in duration-300">
+          <h3 className="text-xl font-black text-slate-900 px-2">统计</h3>
+
+          {/* 包材统计 */}
+          <div className="bg-white rounded-3xl border border-slate-100 shadow-sm p-4">
+            <h4 className="text-base font-black text-slate-900 mb-4">包材统计</h4>
+            <div className="space-y-3">
+              {calculateSupplierStatistics().map((stat, index) => (
+                <div key={index} className="bg-slate-50 rounded-2xl p-4 border border-slate-100">
+                  <div className="font-black text-slate-900 mb-3">{stat.supplierName}</div>
+                  <div className="grid grid-cols-2 gap-3 text-xs">
+                    <div>
+                      <span className="text-slate-400 font-bold">包材种类数：</span>
+                      <span className="text-slate-900 font-black ml-1">{stat.productCount}</span>
+                    </div>
+                    <div>
+                      <span className="text-slate-400 font-bold">待审批订单数：</span>
+                      <span className="text-orange-600 font-black ml-1">{stat.pendingOrderCount}</span>
+                    </div>
+                    <div>
+                      <span className="text-slate-400 font-bold">已完成订单数：</span>
+                      <span className="text-emerald-600 font-black ml-1">{stat.completedOrderCount}</span>
+                    </div>
+                    <div>
+                      <span className="text-slate-400 font-bold">合计订单金额：</span>
+                      <span className="text-emerald-700 font-black ml-1">¥{stat.totalAmount.toFixed(2)}</span>
+                    </div>
+                  </div>
+                </div>
+              ))}
+              {calculateSupplierStatistics().length === 0 && (
+                <div className="text-center py-8 text-slate-400 text-sm font-bold">暂无包材统计数据</div>
+              )}
+            </div>
+          </div>
+
+          {/* 饮片厂统计 */}
+          <div className="bg-white rounded-3xl border border-slate-100 shadow-sm p-4">
+            <h4 className="text-base font-black text-slate-900 mb-4">饮片厂统计</h4>
+            <div className="space-y-3">
+              {calculateManufacturerStatistics().map((stat, index) => (
+                <div key={index} className="bg-slate-50 rounded-2xl p-4 border border-slate-100">
+                  <div className="font-black text-slate-900 mb-3">{stat.manufacturerName}</div>
+                  <div className="grid grid-cols-2 gap-3 text-xs">
+                    <div>
+                      <span className="text-slate-400 font-bold">进行中订单数：</span>
+                      <span className="text-orange-600 font-black ml-1">{stat.inProgressOrderCount}</span>
+                    </div>
+                    <div>
+                      <span className="text-slate-400 font-bold">已完成订单数：</span>
+                      <span className="text-emerald-600 font-black ml-1">{stat.completedOrderCount}</span>
+                    </div>
+                    <div className="col-span-2">
+                      <span className="text-slate-400 font-bold">合计订单金额：</span>
+                      <span className="text-emerald-700 font-black ml-1">¥{stat.totalAmount.toFixed(2)}</span>
+                    </div>
+                  </div>
+                </div>
+              ))}
+              {calculateManufacturerStatistics().length === 0 && (
+                <div className="text-center py-8 text-slate-400 text-sm font-bold">暂无饮片厂统计数据</div>
+              )}
+            </div>
           </div>
         </div>
       )}
