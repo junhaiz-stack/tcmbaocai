@@ -37,7 +37,7 @@ export const Layout: React.FC<LayoutProps> = ({ currentUser, activeTab, onTabCha
         ];
       case UserRole.PLATFORM:
         return [
-          { id: 'audit', label: '审批', icon: ShieldAlert },
+          { id: 'audit', label: '审核', icon: ShieldAlert },
           { id: 'products', label: '包材管理', icon: Box },
           // 报表页暂时隐藏，如需恢复可重新加入 analytics Tab
           { id: 'users', label: '用户', icon: Users },

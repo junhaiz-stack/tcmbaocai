@@ -6,11 +6,13 @@ import { Check, X, BarChart2, FileText, AlertTriangle, Users, Key, Plus, Chevron
 import { PieChart, Pie, Cell, Tooltip, Legend, ResponsiveContainer } from 'recharts';
 import { MobileDialog } from './MobileDialog';
 import { useToast } from './ToastContext';
+import { apiService } from '../src/services/api';
 
 interface PlatformViewProps {
   orders: Order[];
   users: User[];
   products: Product[];
+  currentUser: User;
   activeTab: string;
   onUpdateStatus: (orderId: string, status: OrderStatus, reason?: string) => void;
   onAddUser: (user: Omit<User, 'id' | 'avatar' | 'status'>) => void;
@@ -24,6 +26,7 @@ export const PlatformView: React.FC<PlatformViewProps> = ({
   orders, 
   users, 
   products,
+  currentUser: currentUserProp,
   activeTab,
   onUpdateStatus, 
   onAddUser,
@@ -55,7 +58,195 @@ export const PlatformView: React.FC<PlatformViewProps> = ({
   const filterPanelRef = useRef<HTMLDivElement>(null);
   const filterButtonsRef = useRef<HTMLDivElement>(null);
 
+  // Product Change Request State
+  const [pendingProductChanges, setPendingProductChanges] = useState<any[]>([]);
+  const [rejectProductChangeModal, setRejectProductChangeModal] = useState<any>(null);
+  const [productRejectReason, setProductRejectReason] = useState('');
+  
+  // Audit sub-tab state
+  const [auditSubTab, setAuditSubTab] = useState<'order' | 'product'>('order');
+
   const pendingOrders = orders.filter(o => o.status === OrderStatus.PENDING);
+  
+  // Use currentUser from props instead of localStorage
+  const currentUser = currentUserProp;
+
+  // Load pending product changes when audit tab and sub-tab changes
+  useEffect(() => {
+    if (activeTab === 'audit' && auditSubTab === 'product') {
+      loadPendingProductChanges();
+    }
+  }, [activeTab, auditSubTab]);
+
+  const loadPendingProductChanges = async () => {
+    try {
+      const requests = await apiService.getProductChangeRequests('PENDING');
+      setPendingProductChanges(requests);
+    } catch (error) {
+      console.error('加载待审核包材失败:', error);
+    }
+  };
+
+  const handleApproveProductChange = async (request: any) => {
+    // #region agent log
+    fetch('http://127.0.0.1:7242/ingest/dc13414b-64e8-49e0-86aa-2afbb9b33e65',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'components/PlatformView.tsx:91',message:'handleApproveProductChange called',data:{requestId:request?.id,currentUser:currentUser ? {id:currentUser.id,name:currentUser.name} : null,hasCurrentUser:!!currentUser},timestamp:Date.now(),sessionId:'debug-session',runId:'post-fix',hypothesisId:'D'})}).catch(()=>{});
+    // #endregion
+    if (!currentUser) {
+      // #region agent log
+      fetch('http://127.0.0.1:7242/ingest/dc13414b-64e8-49e0-86aa-2afbb9b33e65',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'components/PlatformView.tsx:93',message:'currentUser is null',data:{},timestamp:Date.now(),sessionId:'debug-session',runId:'post-fix',hypothesisId:'E'})}).catch(()=>{});
+      // #endregion
+      toast.showError('用户未登录');
+      return;
+    }
+    
+    try {
+      // #region agent log
+      fetch('http://127.0.0.1:7242/ingest/dc13414b-64e8-49e0-86aa-2afbb9b33e65',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'components/PlatformView.tsx:99',message:'Calling approveProductChange API',data:{requestId:request.id,userId:currentUser.id},timestamp:Date.now(),sessionId:'debug-session',runId:'post-fix',hypothesisId:'F'})}).catch(()=>{});
+      // #endregion
+      await apiService.approveProductChange(request.id, currentUser.id);
+      toast.showSuccess('审核通过');
+      loadPendingProductChanges();
+      // TODO: 刷新产品列表
+    } catch (error: any) {
+      // #region agent log
+      fetch('http://127.0.0.1:7242/ingest/dc13414b-64e8-49e0-86aa-2afbb9b33e65',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'components/PlatformView.tsx:105',message:'approveProductChange API error',data:{errorMessage:error?.message,errorStack:error?.stack?.substring(0,200)},timestamp:Date.now(),sessionId:'debug-session',runId:'post-fix',hypothesisId:'G'})}).catch(()=>{});
+      // #endregion
+      toast.showError(error.message || '审核失败');
+    }
+  };
+
+  const handleRejectProductChange = (request: any) => {
+    setRejectProductChangeModal(request);
+    setProductRejectReason('');
+  };
+
+  // 渲染变更字段
+  const renderChangedFields = (request: any) => {
+    if (request.changeType === 'CREATE') {
+      // 新增：显示所有关键字段
+      const changes = request.pendingChanges;
+      return (
+        <div className="grid grid-cols-2 gap-2 mt-3 text-xs">
+          <div>
+            <span className="text-slate-400">分类：</span>
+            <span className="text-slate-700 font-bold">{changes.category || '-'}</span>
+          </div>
+          <div>
+            <span className="text-slate-400">材质：</span>
+            <span className="text-slate-700 font-bold">{changes.material || '-'}</span>
+          </div>
+          <div>
+            <span className="text-slate-400">规格：</span>
+            <span className="text-slate-700 font-bold">{changes.spec || '-'}</span>
+          </div>
+          <div>
+            <span className="text-slate-400">单价：</span>
+            <span className="text-emerald-600 font-bold">¥{changes.unitPrice || '-'}</span>
+          </div>
+        </div>
+      );
+    } else {
+      // 编辑：对比显示变更字段
+      const originalProduct = products.find(p => p.id === request.productId);
+      const changes = request.pendingChanges;
+      const changedFields: JSX.Element[] = [];
+
+      if (originalProduct) {
+        // 对比关键字段
+        if (changes.category !== undefined && changes.category !== originalProduct.category) {
+          changedFields.push(
+            <div key="category" className="col-span-2">
+              <span className="text-slate-400">分类：</span>
+              <span className="text-slate-700 font-bold">
+                <span className="text-slate-500 line-through">{originalProduct.category}</span>
+                <span className="mx-2 text-red-500">→</span>
+                <span className="text-red-600 font-black">{changes.category}</span>
+              </span>
+            </div>
+          );
+        }
+        if (changes.material !== undefined && changes.material !== originalProduct.material) {
+          changedFields.push(
+            <div key="material" className="col-span-2">
+              <span className="text-slate-400">材质：</span>
+              <span className="text-slate-700 font-bold">
+                <span className="text-slate-500 line-through">{originalProduct.material}</span>
+                <span className="mx-2 text-red-500">→</span>
+                <span className="text-red-600 font-black">{changes.material}</span>
+              </span>
+            </div>
+          );
+        }
+        if (changes.spec !== undefined && changes.spec !== originalProduct.spec) {
+          changedFields.push(
+            <div key="spec" className="col-span-2">
+              <span className="text-slate-400">规格：</span>
+              <span className="text-slate-700 font-bold">
+                <span className="text-slate-500 line-through">{originalProduct.spec}</span>
+                <span className="mx-2 text-red-500">→</span>
+                <span className="text-red-600 font-black">{changes.spec}</span>
+              </span>
+            </div>
+          );
+        }
+        if (changes.unitPrice !== undefined && changes.unitPrice !== originalProduct.unitPrice) {
+          changedFields.push(
+            <div key="unitPrice" className="col-span-2">
+              <span className="text-slate-400">单价：</span>
+              <span className="text-slate-700 font-bold">
+                <span className="text-slate-500 line-through">¥{originalProduct.unitPrice || '-'}</span>
+                <span className="mx-2 text-red-500">→</span>
+                <span className="text-red-600 font-black">¥{changes.unitPrice}</span>
+              </span>
+            </div>
+          );
+        }
+      }
+
+      if (changedFields.length === 0) {
+        return (
+          <div className="text-xs text-slate-400 font-bold mt-3">无变更</div>
+        );
+      }
+
+      return (
+        <div className="grid grid-cols-2 gap-2 mt-3 text-xs">
+          {changedFields}
+        </div>
+      );
+    }
+  };
+
+  const confirmRejectProductChange = async () => {
+    if (!rejectProductChangeModal || !productRejectReason) {
+      toast.showError('请填写驳回原因');
+      return;
+    }
+    
+    if (!currentUser) {
+      toast.showError('用户未登录');
+      return;
+    }
+    
+    try {
+      // #region agent log
+      fetch('http://127.0.0.1:7242/ingest/dc13414b-64e8-49e0-86aa-2afbb9b33e65',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'components/PlatformView.tsx:112',message:'Calling rejectProductChange API',data:{requestId:rejectProductChangeModal.id,userId:currentUser.id},timestamp:Date.now(),sessionId:'debug-session',runId:'post-fix',hypothesisId:'H'})}).catch(()=>{});
+      // #endregion
+      await apiService.rejectProductChange(
+        rejectProductChangeModal.id, 
+        currentUser.id, 
+        productRejectReason
+      );
+      toast.showSuccess('已驳回');
+      setRejectProductChangeModal(null);
+      loadPendingProductChanges();
+    } catch (error: any) {
+      // #region agent log
+      fetch('http://127.0.0.1:7242/ingest/dc13414b-64e8-49e0-86aa-2afbb9b33e65',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'components/PlatformView.tsx:123',message:'rejectProductChange API error',data:{errorMessage:error?.message,errorStack:error?.stack?.substring(0,200)},timestamp:Date.now(),sessionId:'debug-session',runId:'post-fix',hypothesisId:'I'})}).catch(()=>{});
+      // #endregion
+      toast.showError(error.message || '驳回失败');
+    }
+  };
 
   // Unique supplier list for filter
   const supplierOptions: User[] = Array.from(
@@ -193,38 +384,140 @@ export const PlatformView: React.FC<PlatformViewProps> = ({
     <div className="space-y-4">
       {activeTab === 'audit' && (
         <div className="space-y-4 animate-in fade-in duration-300">
-           <div className="flex justify-between items-center px-2">
-             <h3 className="text-xl font-black text-slate-900">待审队列</h3>
-             <span className="bg-red-500 text-white text-[10px] px-2 py-1 rounded-full font-black">{pendingOrders.length}</span>
-           </div>
-           {pendingOrders.length === 0 ? (
-             <div className="text-center py-20 bg-white rounded-3xl border-2 border-dashed border-slate-100 text-slate-300 font-bold uppercase">无待审项</div>
-           ) : (
-              pendingOrders.map(order => (
-                <div key={order.id} className="bg-white p-5 rounded-3xl border border-slate-100 shadow-sm">
-                  <div className="flex justify-between items-start mb-4">
-                    <div className="flex-1 min-w-0">
-                      <div className="font-black text-slate-900 text-lg truncate leading-tight">{order.productName}</div>
-                      <div className="text-[10px] font-bold text-emerald-600 mt-1 uppercase tracking-tight">申请方: {order.manufacturerName}</div>
+          <h3 className="text-xl font-black text-slate-900 px-2">审核</h3>
+          
+          {/* 子Tab切换 */}
+          <div className="flex bg-white p-1 rounded-2xl border border-slate-100 shadow-sm">
+            <button 
+              onClick={() => setAuditSubTab('order')}
+              className={`flex-1 py-2.5 rounded-xl text-xs font-black transition-all flex items-center justify-center gap-2 ${
+                auditSubTab === 'order' ? 'bg-emerald-600 text-white shadow-lg shadow-emerald-100' : 'text-slate-400'
+              }`}
+            >
+              <ShieldAlert className="w-4 h-4" /> 订单审核
+              {pendingOrders.length > 0 && (
+                <span className={`px-1.5 py-0.5 rounded-full text-[10px] font-black ${auditSubTab === 'order' ? 'bg-white text-red-600' : 'bg-red-50 text-red-600'}`}>
+                  {pendingOrders.length}
+                </span>
+              )}
+            </button>
+            <button 
+              onClick={() => setAuditSubTab('product')}
+              className={`flex-1 py-2.5 rounded-xl text-xs font-black transition-all flex items-center justify-center gap-2 ${
+                auditSubTab === 'product' ? 'bg-emerald-600 text-white shadow-lg shadow-emerald-100' : 'text-slate-400'
+              }`}
+            >
+              <PackageSearch className="w-4 h-4" /> 包材审核
+              {pendingProductChanges.length > 0 && (
+                <span className={`px-1.5 py-0.5 rounded-full text-[10px] font-black ${auditSubTab === 'product' ? 'bg-white text-red-600' : 'bg-red-50 text-red-600'}`}>
+                  {pendingProductChanges.length}
+                </span>
+              )}
+            </button>
+          </div>
+
+          {/* 订单审核内容 */}
+          {auditSubTab === 'order' && (
+            <div className="space-y-4">
+              {pendingOrders.length === 0 ? (
+                <div className="text-center py-20 bg-white rounded-3xl border-2 border-dashed border-slate-100 text-slate-300 font-bold uppercase">无待审项</div>
+              ) : (
+                pendingOrders.map(order => (
+                  <div key={order.id} className="bg-white p-5 rounded-3xl border border-slate-100 shadow-sm">
+                    <div className="flex justify-between items-start mb-4">
+                      <div className="flex-1 min-w-0">
+                        <div className="font-black text-slate-900 text-lg truncate leading-tight">{order.productName}</div>
+                        <div className="text-[10px] font-bold text-emerald-600 mt-1 uppercase tracking-tight">申请方: {order.manufacturerName}</div>
+                      </div>
+                    </div>
+                    <div className="flex gap-2 text-[11px] font-bold text-slate-500 bg-slate-50 p-4 rounded-2xl mb-5">
+                      <div className="flex-1 text-center border-r border-slate-200">
+                        <div className="text-[9px] text-slate-300 uppercase mb-1">数量</div>
+                        <div className="text-slate-800">{order.quantity.toLocaleString()}</div>
+                      </div>
+                      <div className="flex-1 text-center">
+                        <div className="text-[9px] text-slate-300 uppercase mb-1">交期</div>
+                        <div className="text-slate-800">{order.requestDate}</div>
+                      </div>
+                    </div>
+                    <div className="flex gap-3">
+                      <button className="flex-1 bg-red-50 text-red-600 py-3 rounded-2xl font-black text-sm active:scale-95 transition-all" onClick={() => handleRejectClick(order)}>驳回</button>
+                      <button className="flex-1 bg-emerald-600 text-white py-3 rounded-2xl font-black text-sm active:scale-95 transition-all shadow-lg shadow-emerald-100" onClick={() => onUpdateStatus(order.id, OrderStatus.APPROVED)}>通过</button>
                     </div>
                   </div>
-                  <div className="flex gap-2 text-[11px] font-bold text-slate-500 bg-slate-50 p-4 rounded-2xl mb-5">
-                    <div className="flex-1 text-center border-r border-slate-200">
-                      <div className="text-[9px] text-slate-300 uppercase mb-1">数量</div>
-                      <div className="text-slate-800">{order.quantity.toLocaleString()}</div>
-                    </div>
-                    <div className="flex-1 text-center">
-                      <div className="text-[9px] text-slate-300 uppercase mb-1">交期</div>
-                      <div className="text-slate-800">{order.requestDate}</div>
-                    </div>
-                  </div>
-                  <div className="flex gap-3">
-                     <button className="flex-1 bg-red-50 text-red-600 py-3 rounded-2xl font-black text-sm active:scale-95 transition-all" onClick={() => handleRejectClick(order)}>驳回</button>
-                     <button className="flex-1 bg-emerald-600 text-white py-3 rounded-2xl font-black text-sm active:scale-95 transition-all shadow-lg shadow-emerald-100" onClick={() => onUpdateStatus(order.id, OrderStatus.APPROVED)}>通过</button>
-                  </div>
+                ))
+              )}
+            </div>
+          )}
+
+          {/* 包材审核内容 */}
+          {auditSubTab === 'product' && (
+            <div className="space-y-4">
+              {pendingProductChanges.length === 0 ? (
+                <div className="py-20 text-center bg-white rounded-[32px] border-2 border-dashed border-slate-100">
+                  <PackageSearch className="w-10 h-10 text-slate-200 mx-auto mb-3" />
+                  <p className="text-sm font-bold text-slate-300 uppercase tracking-widest">暂无待审核包材</p>
                 </div>
-              ))
-           )}
+              ) : (
+                pendingProductChanges.map(request => {
+                  const changes = request.pendingChanges;
+                  return (
+                    <div key={request.id} className="bg-white p-6 rounded-[32px] border border-slate-100 shadow-sm">
+                      <div className="flex gap-4 mb-4">
+                        {/* 商品缩略图 */}
+                        {changes.image && (
+                          <div className="w-20 h-20 rounded-2xl overflow-hidden bg-slate-100 flex-shrink-0">
+                            <img 
+                              src={changes.image} 
+                              alt={changes.name}
+                              className="w-full h-full object-cover"
+                            />
+                          </div>
+                        )}
+                        
+                        {/* 包材信息 */}
+                        <div className="flex-1">
+                          <div className="flex items-center gap-2 mb-1">
+                            <h4 className="font-black text-slate-900 text-lg">{changes.name}</h4>
+                            <span className={`text-[10px] px-2 py-0.5 rounded-full font-bold ${
+                              request.changeType === 'CREATE' 
+                                ? 'bg-blue-50 text-blue-600' 
+                                : 'bg-amber-50 text-amber-600'
+                            }`}>
+                              {request.changeType === 'CREATE' ? '新增包材' : '编辑包材'}
+                            </span>
+                          </div>
+                          
+                          {/* 变更详情 */}
+                          {renderChangedFields(request)}
+                          
+                          <div className="text-[10px] text-slate-400 mt-2">
+                            提交时间：{new Date(request.createdAt).toLocaleString('zh-CN')}
+                          </div>
+                        </div>
+                      </div>
+                      
+                      {/* 操作按钮 */}
+                      <div className="flex gap-3 mt-4">
+                        <button 
+                          onClick={() => handleRejectProductChange(request)}
+                          className="flex-1 bg-red-50 text-red-600 py-3 rounded-2xl font-black text-sm active:scale-95 transition-all"
+                        >
+                          驳回
+                        </button>
+                        <button 
+                          onClick={() => handleApproveProductChange(request)}
+                          className="flex-1 bg-emerald-600 text-white py-3 rounded-2xl font-black text-sm active:scale-95 transition-all shadow-lg shadow-emerald-100"
+                        >
+                          通过
+                        </button>
+                      </div>
+                    </div>
+                  );
+                })
+              )}
+            </div>
+          )}
         </div>
       )}
 
@@ -635,6 +928,30 @@ export const PlatformView: React.FC<PlatformViewProps> = ({
                 <button onClick={() => setRejectModalOrder(null)} className="flex-1 py-4 font-black text-slate-400">取消</button>
                 <button onClick={confirmReject} disabled={!rejectReason} className="flex-[2] py-4 bg-red-600 text-white rounded-2xl font-black shadow-lg shadow-red-100 disabled:opacity-30">确认</button>
               </div>
+          </div>
+        </div>
+      )}
+
+      {/* Product Change Reject Modal */}
+      {rejectProductChangeModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-6">
+          <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm" onClick={() => setRejectProductChangeModal(null)}></div>
+          <div className="relative bg-white rounded-[40px] shadow-2xl w-full max-w-sm overflow-hidden p-8 animate-in zoom-in-95 duration-200">
+            <div className="flex items-center gap-3 text-red-600 mb-6">
+              <AlertTriangle className="w-8 h-8" />
+              <h3 className="text-2xl font-black leading-none">审核驳回</h3>
+            </div>
+            <p className="text-sm text-slate-400 font-bold mb-6 leading-relaxed">请输入驳回原因，该原因将反馈给包材供应商。</p>
+            <textarea
+              className="w-full bg-slate-50 border-2 border-slate-50 rounded-2xl p-4 font-bold text-sm min-h-[140px] focus:border-red-500 transition-colors"
+              placeholder="例如：规格信息不完整或单价不合理"
+              value={productRejectReason}
+              onChange={(e) => setProductRejectReason(e.target.value)}
+            />
+            <div className="flex gap-3 mt-8">
+              <button onClick={() => setRejectProductChangeModal(null)} className="flex-1 py-4 font-black text-slate-400">取消</button>
+              <button onClick={confirmRejectProductChange} disabled={!productRejectReason} className="flex-[2] py-4 bg-red-600 text-white rounded-2xl font-black shadow-lg shadow-red-100 disabled:opacity-30">确认驳回</button>
+            </div>
           </div>
         </div>
       )}
