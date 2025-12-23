@@ -1,5 +1,6 @@
-
-
+/**
+ * 批量更新产品图片URL为签名URL
+ * 
  * 使用方法：tsx src/utils/updateImageUrls.ts
  */
 
