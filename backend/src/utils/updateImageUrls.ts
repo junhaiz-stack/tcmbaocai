@@ -1,5 +1,5 @@
-/**
- * 批量更新数据库中已存在产品的图片URL（将公开URL转换为签名URL）
+
+
  * 使用方法：tsx src/utils/updateImageUrls.ts
  */
 

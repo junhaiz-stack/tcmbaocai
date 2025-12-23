@@ -1,8 +1,9 @@
 import React, { useState } from 'react';
 import { User, UserRole } from '../types';
-import { Package, ShieldCheck, Factory, Building2 } from 'lucide-react';
+import { Package, ShieldCheck, Factory, Building2, Info } from 'lucide-react';
 import { Button } from './Button';
 import { apiService } from '../src/services/api';
+import { SystemIntroModal } from './SystemIntroModal';
 
 interface LoginScreenProps {
   users: User[];
@@ -15,6 +16,7 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({ users, onLogin }) => {
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
+  const [isIntroModalOpen, setIsIntroModalOpen] = useState(false);
 
   React.useEffect(() => {
     // 根据角色设置默认手机号
@@ -80,8 +82,16 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({ users, onLogin }) => {
 
         {/* Login Card */}
         <div className="bg-white rounded-2xl shadow-2xl border border-slate-100 overflow-hidden">
-          <div className="bg-gradient-to-r from-emerald-500 to-blue-500 px-6 py-4">
+          <div className="bg-gradient-to-r from-emerald-500 to-blue-500 px-6 py-4 flex items-center justify-between">
             <h2 className="text-lg font-semibold text-white">系统登录</h2>
+            <button
+              type="button"
+              onClick={() => setIsIntroModalOpen(true)}
+              className="flex items-center gap-2 px-3 py-1.5 bg-white/20 hover:bg-white/30 text-white rounded-lg transition-all text-sm font-medium"
+            >
+              <Info className="w-4 h-4" />
+              系统介绍
+            </button>
           </div>
           
           <div className="p-8">
@@ -178,6 +188,12 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({ users, onLogin }) => {
           </div>
         </div>
       </div>
+
+      {/* 系统介绍弹窗 */}
+      <SystemIntroModal 
+        open={isIntroModalOpen} 
+        onClose={() => setIsIntroModalOpen(false)} 
+      />
     </div>
   );
 };

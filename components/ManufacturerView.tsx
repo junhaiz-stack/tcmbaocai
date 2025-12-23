@@ -54,6 +54,22 @@ export const ManufacturerView: React.FC<ManufacturerViewProps> = ({
     return o.status === orderFilter;
   });
 
+  // 计算某个产品的可用库存（原始库存 - 未发货订单占用）
+  const calculateAvailableStock = (productId: string): number => {
+    const product = products.find(p => p.id === productId);
+    if (!product) return 0;
+    
+    // 计算 PENDING 和 APPROVED 状态订单占用的库存
+    const reservedStock = orders
+      .filter(o => 
+        o.productId === productId && 
+        (o.status === OrderStatus.PENDING || o.status === OrderStatus.APPROVED)
+      )
+      .reduce((sum, o) => sum + o.quantity, 0);
+    
+    return Math.max(0, product.stock - reservedStock);
+  };
+
   const handleOpenOrderModal = (product: Product) => {
     setSelectedProduct(product);
     setPackageQuantity(1);
@@ -88,12 +104,14 @@ export const ManufacturerView: React.FC<ManufacturerViewProps> = ({
       return;
     }
 
-    // 计算实际数量（件数 * 件装数）
+    // 计算实际数量（件数 * 件装量）
     const unitsPerPackage = latestProduct.unitsPerPackage || 1;
     const actualQuantity = packageQuantity * unitsPerPackage;
 
-    if (actualQuantity > latestProduct.stock) {
-      const errorMsg = `库存不足，当前剩余库存 ${latestProduct.stock} ${latestProduct.unit || '个'}`;
+    // 使用可用库存进行验证
+    const availableStock = calculateAvailableStock(latestProduct.id);
+    if (actualQuantity > availableStock) {
+      const errorMsg = `库存不足，当前可用库存 ${availableStock.toLocaleString()} 个（已扣除未发货订单占用）`;
       toast.showError(errorMsg);
       return;
     }
@@ -104,7 +122,7 @@ export const ManufacturerView: React.FC<ManufacturerViewProps> = ({
       manufacturerName: currentUser.name,
       productId: latestProduct.id,
       productName: latestProduct.name,
-      quantity: actualQuantity, // 存储实际数量（件数 * 件装数）
+      quantity: actualQuantity, // 存储实际数量（件数 * 件装量）
       requestDate: new Date().toISOString().split('T')[0],
       expectedDate: expectedDate || new Date().toISOString().split('T')[0], // 如果没有填写，使用当前日期
     });
@@ -190,7 +208,7 @@ export const ManufacturerView: React.FC<ManufacturerViewProps> = ({
                       </div>
                       <div className="flex items-center justify-between mt-2">
                          <div className="flex flex-col gap-1">
-                           <span className="text-[10px] font-bold text-slate-400">库存: {product.stock.toLocaleString()}</span>
+                           <span className="text-[10px] font-bold text-slate-400">库存: {calculateAvailableStock(product.id).toLocaleString()}</span>
                            {product.unitPrice && (
                              <span className="text-[10px] font-bold text-emerald-600">
                                单价: ¥{product.unitPrice.toFixed(2)}
@@ -535,7 +553,7 @@ export const ManufacturerView: React.FC<ManufacturerViewProps> = ({
                     </div>
                     {selectedProduct.unitsPerPackage && (
                       <div className="flex justify-between items-center">
-                        <span className="text-xs font-bold text-slate-600">件装数</span>
+                        <span className="text-xs font-bold text-slate-600">件装量</span>
                         <span className="text-sm font-black text-slate-900">{selectedProduct.unitsPerPackage} 个/件</span>
                       </div>
                     )}

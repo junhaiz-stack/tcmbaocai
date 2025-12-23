@@ -22,8 +22,14 @@ const upload = multer({
 
 // 图片上传接口
 router.post('/image', upload.single('image'), async (req, res) => {
+  // #region agent log
+  fetch('http://127.0.0.1:7242/ingest/dc13414b-64e8-49e0-86aa-2afbb9b33e65',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'backend/src/routes/upload.ts:24',message:'Upload image endpoint called',data:{hasFile:!!req.file,fileName:req.file?.originalname,fileSize:req.file?.size,fileMimetype:req.file?.mimetype,queryType:req.query.type,url:req.url},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'O'})}).catch(()=>{});
+  // #endregion
   try {
     if (!req.file) {
+      // #region agent log
+      fetch('http://127.0.0.1:7242/ingest/dc13414b-64e8-49e0-86aa-2afbb9b33e65',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'backend/src/routes/upload.ts:27',message:'No file in request',data:{},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'P'})}).catch(()=>{});
+      // #endregion
       return res.status(400).json({
         success: false,
         message: '请选择要上传的图片'
@@ -43,13 +49,34 @@ router.post('/image', upload.single('image'), async (req, res) => {
     }
     const folder = typeParam === 'avatar' ? 'avatars' : 'products';
     
-    // 上传到OSS
-    const imageUrl = await uploadToOSS(
-      req.file.buffer,
-      req.file.originalname,
-      req.file.mimetype,
-      folder
-    );
+    // #region agent log
+    fetch('http://127.0.0.1:7242/ingest/dc13414b-64e8-49e0-86aa-2afbb9b33e65',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'backend/src/routes/upload.ts:48',message:'Before uploadToOSS',data:{folder,fileName:req.file.originalname,fileSize:req.file.size},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'Q'})}).catch(()=>{});
+    // #endregion
+    
+    let imageUrl: string;
+    
+    try {
+      // 尝试上传到OSS
+      imageUrl = await uploadToOSS(
+        req.file.buffer,
+        req.file.originalname,
+        req.file.mimetype,
+        folder
+      );
+      // #region agent log
+      fetch('http://127.0.0.1:7242/ingest/dc13414b-64e8-49e0-86aa-2afbb9b33e65',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'backend/src/routes/upload.ts:58',message:'Upload to OSS successful',data:{imageUrl:imageUrl?.substring(0,100)},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'R'})}).catch(()=>{});
+      // #endregion
+    } catch (ossError: any) {
+      // #region agent log
+      fetch('http://127.0.0.1:7242/ingest/dc13414b-64e8-49e0-86aa-2afbb9b33e65',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'backend/src/routes/upload.ts:61',message:'OSS upload failed, using base64 fallback',data:{errorMessage:ossError?.message,errorCode:ossError?.code},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'Z'})}).catch(()=>{});
+      // #endregion
+      
+      // OSS上传失败，使用base64作为fallback
+      console.warn('⚠️  OSS上传失败，使用base64存储:', ossError.message);
+      const base64String = req.file.buffer.toString('base64');
+      const dataUrl = `data:${req.file.mimetype};base64,${base64String}`;
+      imageUrl = dataUrl;
+    }
 
     res.json({
       success: true,
@@ -58,6 +85,9 @@ router.post('/image', upload.single('image'), async (req, res) => {
       }
     });
   } catch (error: any) {
+    // #region agent log
+    fetch('http://127.0.0.1:7242/ingest/dc13414b-64e8-49e0-86aa-2afbb9b33e65',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'backend/src/routes/upload.ts:66',message:'Upload error',data:{errorName:error?.name,errorMessage:error?.message,errorCode:error?.code,errorStack:error?.stack?.substring(0,200)},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'S'})}).catch(()=>{});
+    // #endregion
     console.error('上传失败:', error);
     res.status(500).json({
       success: false,

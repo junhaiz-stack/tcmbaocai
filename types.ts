@@ -19,9 +19,21 @@ export enum OrderStatus {
 }
 
 export enum ProductStatus {
+  PENDING_APPROVAL = 'PENDING_APPROVAL', // Pending platform approval
   ACTIVE = 'ACTIVE',       // Normal/Listed
   INACTIVE = 'INACTIVE',   // Deactivated by Supplier (Soft delete)
   DELISTED = 'DELISTED'    // Delisted by Platform (Punishment)
+}
+
+export enum ProductChangeType {
+  CREATE = 'CREATE',       // New product
+  UPDATE = 'UPDATE'        // Edit existing product
+}
+
+export enum ProductChangeStatus {
+  PENDING = 'PENDING',     // Waiting for review
+  APPROVED = 'APPROVED',   // Approved by platform
+  REJECTED = 'REJECTED'    // Rejected by platform
 }
 
 export interface Product {
@@ -35,7 +47,8 @@ export interface Product {
   supplierId: string; // Which supplier makes this
   status: ProductStatus; // New field
   unitPrice?: number; // 单价（最小单位价格）
-  unitsPerPackage?: number; // 件装数（整件包含的最小单位数量）
+  unitsPerPackage?: number; // 件装量（整件包含的最小单位数量）
+  packageCount?: number; // 件数（有多少件）
 }
 
 export interface LogisticsInfo {
@@ -70,4 +83,17 @@ export interface User {
   email?: string;
   address?: string; // 联系地址
   status: UserStatus;
+}
+
+export interface ProductChangeRequest {
+  id: string;
+  productId: string;
+  changeType: ProductChangeType;
+  status: ProductChangeStatus;
+  pendingChanges: Partial<Product>; // 待审核的变更内容
+  reviewedBy?: string;
+  reviewedAt?: string;
+  rejectReason?: string;
+  createdAt: string;
+  updatedAt: string;
 }

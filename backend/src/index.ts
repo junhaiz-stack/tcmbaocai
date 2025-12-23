@@ -9,9 +9,13 @@ import userRoutes from './routes/users';
 import productRoutes from './routes/products';
 import orderRoutes from './routes/orders';
 import uploadRoutes from './routes/upload';
+import productChangeRequestRoutes from './routes/product-change-requests';
 
 // 重新加载环境变量（确保.env文件更新后生效）
 dotenv.config({ override: true });
+// #region agent log
+fetch('http://127.0.0.1:7242/ingest/dc13414b-64e8-49e0-86aa-2afbb9b33e65',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'backend/src/index.ts:14',message:'Backend startup entry',data:{port:process.env.PORT||3001,nodeEnv:process.env.NODE_ENV,hasDatabaseUrl:!!process.env.DATABASE_URL},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'B'})}).catch(()=>{});
+// #endregion
 
 // 验证OSS配置（启动时检查）
 const validateOSSConfig = () => {
@@ -34,17 +38,38 @@ const validateOSSConfig = () => {
 validateOSSConfig();
 
 const app = express();
+// #region agent log
+fetch('http://127.0.0.1:7242/ingest/dc13414b-64e8-49e0-86aa-2afbb9b33e65',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'backend/src/index.ts:36',message:'Express app created',data:{corsOrigin:process.env.CORS_ORIGIN||'http://localhost:5173'},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'D'})}).catch(()=>{});
+// #endregion
 const prisma = new PrismaClient();
+// #region agent log
+fetch('http://127.0.0.1:7242/ingest/dc13414b-64e8-49e0-86aa-2afbb9b33e65',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'backend/src/index.ts:44',message:'Prisma client created',data:{prismaVersion:prisma?.$extends?.toString?.()||'N/A',hasProductModel:!!prisma.product},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'E'})}).catch(()=>{});
+// #endregion
 
 // 中间件
+const corsOrigin = process.env.CORS_ORIGIN || 'http://localhost:5173';
+// #region agent log
+fetch('http://127.0.0.1:7242/ingest/dc13414b-64e8-49e0-86aa-2afbb9b33e65',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'backend/src/index.ts:40',message:'CORS config',data:{corsOrigin},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'D'})}).catch(()=>{});
+// #endregion
 app.use(cors({
-  origin: process.env.CORS_ORIGIN || 'http://localhost:5173',
+  origin: corsOrigin,
   credentials: true
 }));
 app.use(express.json());
 
+// 请求日志中间件
+app.use((req, res, next) => {
+  // #region agent log
+  fetch('http://127.0.0.1:7242/ingest/dc13414b-64e8-49e0-86aa-2afbb9b33e65',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'backend/src/index.ts:45',message:'Incoming request',data:{method:req.method,url:req.url,origin:req.headers.origin,userAgent:req.headers['user-agent']?.substring(0,50)},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'A'})}).catch(()=>{});
+  // #endregion
+  next();
+});
+
 // 健康检查
 app.get('/health', (req, res) => {
+  // #region agent log
+  fetch('http://127.0.0.1:7242/ingest/dc13414b-64e8-49e0-86aa-2afbb9b33e65',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'backend/src/index.ts:47',message:'Health check endpoint hit',data:{},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'A'})}).catch(()=>{});
+  // #endregion
   res.json({ status: 'ok', timestamp: new Date().toISOString() });
 });
 
@@ -54,10 +79,17 @@ app.use('/api/users', userRoutes);
 app.use('/api/products', productRoutes);
 app.use('/api/orders', orderRoutes);
 app.use('/api/upload', uploadRoutes);
+app.use('/api/product-change-requests', productChangeRequestRoutes);
+// #region agent log
+fetch('http://127.0.0.1:7242/ingest/dc13414b-64e8-49e0-86aa-2afbb9b33e65',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'backend/src/index.ts:56',message:'Routes registered',data:{},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'B'})}).catch(()=>{});
+// #endregion
 
 // 错误处理中间件
 app.use((err: any, req: express.Request, res: express.Response, next: express.NextFunction) => {
   console.error('Error:', err);
+  // #region agent log
+  fetch('http://127.0.0.1:7242/ingest/dc13414b-64e8-49e0-86aa-2afbb9b33e65',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'backend/src/index.ts:59',message:'Error middleware triggered',data:{errorMessage:err?.message,errorStatus:err?.status,url:req.url,method:req.method},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'B'})}).catch(()=>{});
+  // #endregion
   res.status(err.status || 500).json({
     success: false,
     message: err.message || '服务器内部错误'
@@ -65,14 +97,70 @@ app.use((err: any, req: express.Request, res: express.Response, next: express.Ne
 });
 
 const PORT = process.env.PORT || 3001;
+// #region agent log
+fetch('http://127.0.0.1:7242/ingest/dc13414b-64e8-49e0-86aa-2afbb9b33e65',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'backend/src/index.ts:67',message:'Before app.listen',data:{port:PORT},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'A'})}).catch(()=>{});
+// #endregion
 
-app.listen(PORT, () => {
-  console.log(`🚀 服务器运行在 http://localhost:${PORT}`);
+// 测试数据库连接
+prisma.$connect().then(() => {
+  // #region agent log
+  fetch('http://127.0.0.1:7242/ingest/dc13414b-64e8-49e0-86aa-2afbb9b33e65',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'backend/src/index.ts:70',message:'Database connection successful',data:{},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'B'})}).catch(()=>{});
+  // #endregion
+  console.log('✅ 数据库连接成功');
+}).catch((error) => {
+  // #region agent log
+  fetch('http://127.0.0.1:7242/ingest/dc13414b-64e8-49e0-86aa-2afbb9b33e65',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'backend/src/index.ts:73',message:'Database connection failed',data:{errorMessage:error?.message,errorCode:error?.code},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'B'})}).catch(()=>{});
+  // #endregion
+  console.error('❌ 数据库连接失败:', error.message);
+});
+
+// 启动服务器，明确绑定到所有接口并添加错误处理
+const server = app.listen(PORT, '0.0.0.0', () => {
+  console.log(`🚀 服务器运行在 http://0.0.0.0:${PORT}`);
+  console.log(`   本地访问: http://localhost:${PORT}`);
+  // #region agent log
+  fetch('http://127.0.0.1:7242/ingest/dc13414b-64e8-49e0-86aa-2afbb9b33e65',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'backend/src/index.ts:116',message:'Server listening successfully',data:{port:PORT},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'A'})}).catch(()=>{});
+  // #endregion
+});
+
+server.on('error', (error: any) => {
+  // #region agent log
+  fetch('http://127.0.0.1:7242/ingest/dc13414b-64e8-49e0-86aa-2afbb9b33e65',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'backend/src/index.ts:121',message:'Server listen error',data:{errorMessage:error?.message,errorCode:error?.code},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'A'})}).catch(()=>{});
+  // #endregion
+  if (error.code === 'EADDRINUSE') {
+    console.error(`❌ 端口 ${PORT} 已被占用，请检查是否有其他进程在使用该端口`);
+  } else {
+    console.error('❌ 服务器启动失败:', error.message);
+  }
+  process.exit(1);
+});
+
+// 进程错误处理
+process.on('uncaughtException', (error) => {
+  // #region agent log
+  fetch('http://127.0.0.1:7242/ingest/dc13414b-64e8-49e0-86aa-2afbb9b33e65',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'backend/src/index.ts:74',message:'Uncaught exception',data:{errorMessage:error.message,errorStack:error.stack?.substring(0,200)},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'B'})}).catch(()=>{});
+  // #endregion
+  console.error('Uncaught Exception:', error);
+});
+
+process.on('unhandledRejection', (reason, promise) => {
+  // #region agent log
+  fetch('http://127.0.0.1:7242/ingest/dc13414b-64e8-49e0-86aa-2afbb9b33e65',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'backend/src/index.ts:79',message:'Unhandled rejection',data:{reason:reason?.toString()?.substring(0,200)},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'B'})}).catch(()=>{});
+  // #endregion
+  console.error('Unhandled Rejection:', reason);
 });
 
 // 优雅关闭
 process.on('beforeExit', async () => {
   await prisma.$disconnect();
+});
+
+process.on('SIGTERM', async () => {
+  console.log('收到 SIGTERM 信号，正在关闭服务器...');
+  server.close(async () => {
+    await prisma.$disconnect();
+    process.exit(0);
+  });
 });
 
 export default app;

@@ -172,13 +172,8 @@ function AppContent() {
   };
 
   const handleDeleteProduct = async (productId: string) => {
-    try {
-      await apiService.deleteProduct(productId);
-    setProducts(prev => prev.filter(p => p.id !== productId));
-      toast.showSuccess('删除包材成功');
-    } catch (err: any) {
-      toast.showError(err.message || '删除包材失败');
-    }
+    // 此方法已废弃，改为使用handleUpdateProductStatus进行下架
+    // 保留此方法以兼容旧代码，但实际不会调用
   };
 
   const handleUpdateProductStatus = async (product: Product, status: ProductStatus) => {
@@ -270,6 +265,7 @@ function AppContent() {
             orders={orders}
             users={users}
             products={products}
+            currentUser={currentUser}
             activeTab={activeTab}
             onUpdateStatus={handleUpdateStatus}
             onAddUser={handleAddUser}
@@ -290,6 +286,7 @@ function AppContent() {
             onAddProduct={handleAddProduct}
             onUpdateProduct={handleUpdateProduct}
             onDeleteProduct={handleDeleteProduct}
+            onUpdateProductStatus={handleUpdateProductStatus}
           />
         );
       case UserRole.GENERAL_MANAGER:

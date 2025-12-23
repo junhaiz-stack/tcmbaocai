@@ -53,7 +53,13 @@ export async function uploadToOSS(
   contentType: string,
   folder: 'products' | 'avatars' = 'products'
 ): Promise<string> {
+  // #region agent log
+  fetch('http://127.0.0.1:7242/ingest/dc13414b-64e8-49e0-86aa-2afbb9b33e65',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'backend/src/utils/oss.ts:50',message:'uploadToOSS called',data:{filename,contentType,folder,fileSize:file.length},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'T'})}).catch(()=>{});
+  // #endregion
   try {
+    // #region agent log
+    fetch('http://127.0.0.1:7242/ingest/dc13414b-64e8-49e0-86aa-2afbb9b33e65',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'backend/src/utils/oss.ts:57',message:'Getting OSS client',data:{hasOSSConfig:!!process.env.OSS_BUCKET_NAME,bucketName:process.env.OSS_BUCKET_NAME,region:process.env.OSS_REGION},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'U'})}).catch(()=>{});
+    // #endregion
     const ossClient = getOSSClient();
     
     // 生成唯一文件名，避免冲突
@@ -62,10 +68,18 @@ export async function uploadToOSS(
     const ext = filename.split('.').pop() || 'jpg';
     const objectName = `${folder}/${timestamp}-${randomStr}.${ext}`;
 
+    // #region agent log
+    fetch('http://127.0.0.1:7242/ingest/dc13414b-64e8-49e0-86aa-2afbb9b33e65',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'backend/src/utils/oss.ts:66',message:'Before OSS put',data:{objectName,contentType},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'V'})}).catch(()=>{});
+    // #endregion
+
     // 上传到OSS
     const result = await ossClient.put(objectName, file, {
       contentType,
     });
+
+    // #region agent log
+    fetch('http://127.0.0.1:7242/ingest/dc13414b-64e8-49e0-86aa-2afbb9b33e65',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'backend/src/utils/oss.ts:72',message:'OSS put successful',data:{objectName,resultUrl:result.url?.substring(0,100)},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'W'})}).catch(()=>{});
+    // #endregion
 
     // 对于私有Bucket，生成签名URL（有效期1年）
     // 如果Bucket是公共读，signatureUrl和url相同
@@ -73,9 +87,16 @@ export async function uploadToOSS(
       expires: 31536000, // 1年（秒）
     });
 
+    // #region agent log
+    fetch('http://127.0.0.1:7242/ingest/dc13414b-64e8-49e0-86aa-2afbb9b33e65',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'backend/src/utils/oss.ts:77',message:'Signature URL generated',data:{signatureUrl:signatureUrl?.substring(0,100)},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'X'})}).catch(()=>{});
+    // #endregion
+
     console.log(`✅ 图片上传成功: ${objectName}`);
     return signatureUrl;
   } catch (error: any) {
+    // #region agent log
+    fetch('http://127.0.0.1:7242/ingest/dc13414b-64e8-49e0-86aa-2afbb9b33e65',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'backend/src/utils/oss.ts:85',message:'OSS upload error',data:{errorName:error?.name,errorCode:error?.code,errorMessage:error?.message,errorStack:error?.stack?.substring(0,200)},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'Y'})}).catch(()=>{});
+    // #endregion
     console.error('❌ OSS上传失败:', error);
     if (error.code === 'InvalidAccessKeyId' || error.code === 'SignatureDoesNotMatch') {
       throw new Error('OSS配置错误，请检查AccessKeyId和AccessKeySecret');

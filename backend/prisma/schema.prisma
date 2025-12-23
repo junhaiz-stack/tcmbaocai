@@ -8,19 +8,20 @@ datasource db {
 }
 
 model User {
-  id           String    @id @default(uuid())
-  name         String
-  role         String
-  avatar       String?
-  phone        String?
-  email        String?
-  passwordHash String?   @map("password_hash")
-  status       String    @default("ACTIVE")
-  createdAt    DateTime  @default(now()) @map("created_at")
-  updatedAt    DateTime  @updatedAt @map("updated_at")
-  address      String?   @map("address")
-  orders       Order[]   @relation("ManufacturerOrders")
-  products     Product[] @relation("SupplierProducts")
+  id              String                   @id @default(uuid())
+  name            String
+  role            String
+  avatar          String?
+  phone           String?
+  email           String?
+  passwordHash    String?                  @map("password_hash")
+  status          String                   @default("ACTIVE")
+  createdAt       DateTime                 @default(now()) @map("created_at")
+  updatedAt       DateTime                 @updatedAt @map("updated_at")
+  address         String?                  @map("address")
+  orders          Order[]                  @relation("ManufacturerOrders")
+  products        Product[]                @relation("SupplierProducts")
+  reviewedChanges ProductChangeRequest[]   @relation("ReviewedChanges")
 
   @@index([role])
   @@index([status])
@@ -28,21 +29,23 @@ model User {
 }
 
 model Product {
-  id              String   @id @default(uuid())
+  id              String                  @id @default(uuid())
   name            String
   category        String
   material        String
   spec            String
   image           String
-  stock           Int      @default(0)
-  supplierId      String   @map("supplier_id")
-  status          String   @default("ACTIVE")
-  createdAt       DateTime @default(now()) @map("created_at")
-  updatedAt       DateTime @updatedAt @map("updated_at")
-  unitPrice       Decimal? @map("unit_price") @db.Decimal(10, 2)
-  unitsPerPackage Int?     @map("units_per_package")
+  stock           Int                     @default(0)
+  supplierId      String                  @map("supplier_id")
+  status          String                  @default("ACTIVE")
+  createdAt       DateTime                @default(now()) @map("created_at")
+  updatedAt       DateTime                @updatedAt @map("updated_at")
+  unitPrice       Decimal?                @map("unit_price") @db.Decimal(10, 2)
+  unitsPerPackage Int?                    @map("units_per_package")
+  packageCount    Int?                    @map("package_count")
   orders          Order[]
-  supplier        User     @relation("SupplierProducts", fields: [supplierId], references: [id])
+  supplier        User                    @relation("SupplierProducts", fields: [supplierId], references: [id])
+  changeRequests  ProductChangeRequest[]
 
   @@index([supplierId])
   @@index([status])
@@ -86,4 +89,24 @@ model Logistics {
   order                Order    @relation(fields: [orderId], references: [id], onDelete: Cascade)
 
   @@map("logistics")
+}
+
+model ProductChangeRequest {
+  id             String    @id @default(uuid())
+  productId      String    @map("product_id")
+  changeType     String    @map("change_type")
+  status         String    @default("PENDING")
+  pendingChanges Json      @map("pending_changes")
+  reviewedBy     String?   @map("reviewed_by")
+  reviewedAt     DateTime? @map("reviewed_at")
+  rejectReason   String?   @map("reject_reason") @db.Text
+  createdAt      DateTime  @default(now()) @map("created_at")
+  updatedAt      DateTime  @updatedAt @map("updated_at")
+  product        Product?  @relation(fields: [productId], references: [id], onDelete: Cascade)
+  reviewer       User?     @relation("ReviewedChanges", fields: [reviewedBy], references: [id])
+
+  @@index([productId])
+  @@index([status])
+  @@index([changeType])
+  @@map("product_change_requests")
 }

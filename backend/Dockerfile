@@ -2,6 +2,15 @@ FROM node:18-alpine
 
 WORKDIR /app
 
+# 使用国内镜像源（阿里云）加速包下载
+RUN sed -i 's/dl-cdn.alpinelinux.org/mirrors.aliyun.com/g' /etc/apk/repositories
+
+# 安装 OpenSSL 库（Prisma 需要）
+# Alpine 3.21+ 使用 openssl 包，并创建符号链接以兼容 Prisma
+RUN apk add --no-cache openssl && \
+    ln -s /usr/lib/libssl.so.3 /usr/lib/libssl.so.1.1 2>/dev/null || true && \
+    ln -s /usr/lib/libcrypto.so.3 /usr/lib/libcrypto.so.1.1 2>/dev/null || true
+
 # 复制 package 文件
 COPY package*.json ./
 COPY prisma ./prisma/
