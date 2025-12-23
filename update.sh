@@ -1,6 +1,6 @@
 #!/bin/bash
 
-# 阿里云 ECS 代码更新脚本
+# 阿里云 ECS 代码更新脚本（直接部署版本）
 # 用于从 GitHub 拉取最新代码并更新应用
 
 set -e  # 遇到错误立即退出
@@ -29,8 +29,10 @@ print_step() {
     echo -e "${BLUE}[STEP]${NC} $1"
 }
 
-# 项目目录
+# 项目目录（根据实际情况修改）
 PROJECT_DIR="/opt/tcmbaocai"
+BACKEND_DIR="$PROJECT_DIR/backend"
+FRONTEND_DIR="$PROJECT_DIR"
 
 # 检查是否在项目目录
 if [ ! -d "$PROJECT_DIR" ]; then
@@ -81,80 +83,114 @@ if [ -f "$PROJECT_DIR/.last_update_commit" ]; then
     fi
 fi
 
-# 步骤 4: 检查 Docker 是否运行
-print_step "3. 检查 Docker 服务..."
-if ! systemctl is-active --quiet docker; then
-    print_error "Docker 服务未运行，正在启动..."
-    systemctl start docker
-    sleep 3
+# 步骤 4: 检查 Node.js 和 npm
+print_step "3. 检查 Node.js 环境..."
+if ! command -v node &> /dev/null; then
+    print_error "Node.js 未安装，请先安装 Node.js"
+    exit 1
 fi
+if ! command -v npm &> /dev/null; then
+    print_error "npm 未安装，请先安装 npm"
+    exit 1
+fi
+print_info "Node.js 版本: $(node --version)"
+print_info "npm 版本: $(npm --version)"
 
-# 步骤 5: 重新构建后端镜像
-print_step "4. 重新构建后端镜像..."
-print_info "这可能需要 5-10 分钟，请耐心等待..."
-if docker build -t tcm-backend ./backend; then
-    print_info "✓ 后端镜像构建成功"
+# 步骤 5: 更新后端依赖
+print_step "4. 更新后端依赖..."
+cd "$BACKEND_DIR"
+print_info "安装后端依赖（这可能需要几分钟）..."
+if npm install --production=false; then
+    print_info "✓ 后端依赖安装成功"
 else
-    print_error "后端镜像构建失败"
+    print_error "后端依赖安装失败"
     exit 1
 fi
 
-# 步骤 6: 重新构建前端镜像
-print_step "5. 重新构建前端镜像..."
-print_info "这可能需要 5-10 分钟，请耐心等待..."
-if docker build -t tcm-frontend .; then
-    print_info "✓ 前端镜像构建成功"
+# 步骤 6: 生成 Prisma Client
+print_step "5. 生成 Prisma Client..."
+if npx prisma generate; then
+    print_info "✓ Prisma Client 生成成功"
 else
-    print_error "前端镜像构建失败"
+    print_error "Prisma Client 生成失败"
     exit 1
 fi
 
-# 步骤 7: 重启后端容器
-print_step "6. 重启后端容器..."
-if docker ps -a | grep -q tcm_backend; then
-    print_info "停止旧的后端容器..."
-    docker stop tcm_backend 2>/dev/null || true
-    docker rm tcm_backend 2>/dev/null || true
-fi
-
-print_info "启动新的后端容器..."
-if docker run -d --name tcm_backend \
-  -p 3001:3001 \
-  --env-file ./backend/.env \
-  --network tcm_network \
-  --restart unless-stopped \
-  tcm-backend; then
-    print_info "✓ 后端容器启动成功"
+# 步骤 7: 构建后端
+print_step "6. 构建后端..."
+if npm run build; then
+    print_info "✓ 后端构建成功"
 else
-    print_error "后端容器启动失败"
+    print_error "后端构建失败"
     exit 1
 fi
 
-# 步骤 8: 重启前端容器
-print_step "7. 重启前端容器..."
-if docker ps -a | grep -q tcm_frontend; then
-    print_info "停止旧的前端容器..."
-    docker stop tcm_frontend 2>/dev/null || true
-    docker rm tcm_frontend 2>/dev/null || true
-fi
-
-print_info "启动新的前端容器..."
-if docker run -d --name tcm_frontend \
-  --network tcm_network \
-  --restart unless-stopped \
-  tcm-frontend; then
-    print_info "✓ 前端容器启动成功"
+# 步骤 8: 更新前端依赖
+print_step "7. 更新前端依赖..."
+cd "$FRONTEND_DIR"
+print_info "安装前端依赖（这可能需要几分钟）..."
+if npm install; then
+    print_info "✓ 前端依赖安装成功"
 else
-    print_error "前端容器启动失败"
+    print_error "前端依赖安装失败"
     exit 1
 fi
 
-# 步骤 9: 等待服务启动
-print_step "8. 等待服务启动..."
+# 步骤 9: 构建前端
+print_step "8. 构建前端..."
+if npm run build; then
+    print_info "✓ 前端构建成功"
+else
+    print_error "前端构建失败"
+    exit 1
+fi
+
+# 步骤 10: 重启后端服务
+print_step "9. 重启后端服务..."
+
+# 检查是否使用 PM2
+if command -v pm2 &> /dev/null; then
+    print_info "检测到 PM2，使用 PM2 重启后端..."
+    if pm2 list | grep -q "tcm-backend\|backend"; then
+        print_info "重启 PM2 后端进程..."
+        pm2 restart tcm-backend 2>/dev/null || pm2 restart backend 2>/dev/null || pm2 restart all
+    else
+        print_warn "未找到 PM2 后端进程，请手动启动"
+    fi
+# 检查是否使用 systemd
+elif systemctl list-units --type=service | grep -q "tcm-backend\|tcm-backend.service"; then
+    print_info "检测到 systemd 服务，重启后端服务..."
+    systemctl restart tcm-backend 2>/dev/null || systemctl restart tcm-backend.service
+# 检查是否有启动脚本
+elif [ -f "$BACKEND_DIR/start.sh" ]; then
+    print_info "使用启动脚本重启后端..."
+    cd "$BACKEND_DIR"
+    ./start.sh restart
+else
+    print_warn "未检测到进程管理器，请手动重启后端服务"
+    print_info "后端启动命令: cd $BACKEND_DIR && npm start"
+fi
+
+# 步骤 11: 重启 Nginx（如果需要）
+print_step "10. 重启 Nginx..."
+if command -v nginx &> /dev/null; then
+    if systemctl is-active --quiet nginx; then
+        print_info "重新加载 Nginx 配置..."
+        nginx -s reload 2>/dev/null || systemctl reload nginx
+        print_info "✓ Nginx 已重新加载"
+    else
+        print_warn "Nginx 未运行"
+    fi
+else
+    print_warn "Nginx 未安装或未找到"
+fi
+
+# 步骤 12: 等待服务启动
+print_step "11. 等待服务启动..."
 sleep 5
 
-# 步骤 10: 健康检查
-print_step "9. 执行健康检查..."
+# 步骤 13: 健康检查
+print_step "12. 执行健康检查..."
 
 # 检查后端
 print_info "检查后端服务..."
@@ -164,7 +200,7 @@ for i in {1..15}; do
         break
     fi
     if [ $i -eq 15 ]; then
-        print_warn "✗ 后端服务可能未就绪，请检查日志: docker logs tcm_backend"
+        print_warn "✗ 后端服务可能未就绪，请检查日志"
     else
         echo -n "."
         sleep 2
@@ -179,12 +215,21 @@ else
     print_warn "✗ Nginx 服务可能未就绪"
 fi
 
-# 步骤 11: 保存更新记录
+# 步骤 14: 保存更新记录
 echo "$CURRENT_COMMIT" > "$PROJECT_DIR/.last_update_commit"
 
-# 步骤 12: 显示容器状态
-print_step "10. 当前容器状态:"
-docker ps --format "table {{.Names}}\t{{.Status}}\t{{.Ports}}" | grep -E "NAME|tcm_"
+# 步骤 15: 显示服务状态
+print_step "13. 当前服务状态:"
+
+# PM2 状态
+if command -v pm2 &> /dev/null; then
+    print_info "PM2 进程状态:"
+    pm2 list | head -5
+fi
+
+# 检查后端进程
+print_info "后端进程:"
+ps aux | grep -E "node.*backend|node.*dist/index" | grep -v grep || print_warn "未找到后端进程"
 
 # 完成
 echo ""
@@ -196,9 +241,12 @@ print_info "提交信息: $(git log -1 --pretty=format:'%s')"
 print_info "更新时间: $(date '+%Y-%m-%d %H:%M:%S')"
 print_info ""
 print_info "查看日志命令:"
-print_info "  后端: docker logs -f tcm_backend"
-print_info "  前端: docker logs -f tcm_frontend"
-print_info "  Nginx: docker logs -f tcm_nginx"
+if command -v pm2 &> /dev/null; then
+    print_info "  后端: pm2 logs tcm-backend"
+else
+    print_info "  后端: tail -f $BACKEND_DIR/logs/*.log 或 journalctl -u tcm-backend"
+fi
+print_info "  Nginx: tail -f /var/log/nginx/error.log"
 print_info ""
 print_info "访问地址: http://$(hostname -I | awk '{print $1}')"
 print_info "=========================================="

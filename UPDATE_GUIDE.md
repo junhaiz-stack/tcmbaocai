@@ -1,6 +1,6 @@
-# 阿里云 ECS 代码更新指南
+# 阿里云 ECS 代码更新指南（直接部署版本）
 
-本文档说明如何在阿里云 ECS 服务器上更新代码，从 GitHub 拉取最新更改。
+本文档说明如何在阿里云 ECS 服务器上更新代码，从 GitHub 拉取最新更改（直接部署，不使用 Docker）。
 
 ## 快速更新（推荐）
 
@@ -13,22 +13,23 @@ ssh root@172.30.184.197
 # 2. 进入项目目录
 cd /opt/tcmbaocai
 
-# 3. 如果脚本不存在，先下载或创建
-# 可以从 GitHub 拉取，或使用以下命令创建
-cat > update.sh << 'EOF'
-# ... (脚本内容)
-EOF
+# 3. 如果脚本不存在，先从 GitHub 拉取
+git pull origin main
+
+# 4. 给脚本添加执行权限
 chmod +x update.sh
 
-# 4. 执行更新脚本
+# 5. 执行更新脚本
 ./update.sh
 ```
 
 更新脚本会自动完成以下操作：
 - ✅ 备份当前代码
 - ✅ 从 GitHub 拉取最新代码
-- ✅ 重新构建 Docker 镜像
-- ✅ 重启容器
+- ✅ 更新 npm 依赖
+- ✅ 重新构建前端和后端
+- ✅ 重启服务（PM2/systemd）
+- ✅ 重新加载 Nginx
 - ✅ 执行健康检查
 
 ---
@@ -56,8 +57,11 @@ cd /opt/tcmbaocai
 git branch
 git log -1 --oneline
 
-# 查看容器状态
-docker ps
+# 查看服务状态（如果使用 PM2）
+pm2 list
+
+# 或查看 systemd 服务状态
+systemctl status tcm-backend
 ```
 
 ### 步骤 4: 拉取最新代码
@@ -73,71 +77,102 @@ git pull origin main
 git log --oneline -5
 ```
 
-### 步骤 5: 重新构建后端镜像
+### 步骤 5: 更新后端依赖并构建
 
 ```bash
-# 构建后端镜像（需要 5-10 分钟）
-docker build -t tcm-backend ./backend
+# 进入后端目录
+cd backend
+
+# 安装依赖（如果需要）
+npm install
+
+# 生成 Prisma Client
+npx prisma generate
+
+# 构建后端
+npm run build
 ```
 
-### 步骤 6: 重新构建前端镜像
+### 步骤 6: 更新前端依赖并构建
 
 ```bash
-# 构建前端镜像（需要 5-10 分钟）
-docker build -t tcm-frontend .
+# 返回项目根目录
+cd ..
+
+# 安装前端依赖（如果需要）
+npm install
+
+# 构建前端
+npm run build
 ```
 
-### 步骤 7: 重启后端容器
+### 步骤 7: 重启后端服务
 
+**如果使用 PM2：**
 ```bash
-# 停止并删除旧容器
-docker stop tcm_backend
-docker rm tcm_backend
+# 重启后端进程
+pm2 restart tcm-backend
 
-# 启动新容器
-docker run -d --name tcm_backend \
-  -p 3001:3001 \
-  --env-file ./backend/.env \
-  --network tcm_network \
-  --restart unless-stopped \
-  tcm-backend
+# 或重启所有进程
+pm2 restart all
+
+# 查看状态
+pm2 status
 ```
 
-### 步骤 8: 重启前端容器
+**如果使用 systemd：**
+```bash
+# 重启服务
+systemctl restart tcm-backend
+
+# 查看状态
+systemctl status tcm-backend
+```
+
+**如果直接运行：**
+```bash
+# 停止旧进程（找到进程ID）
+ps aux | grep "node.*backend"
+
+# 杀死进程
+kill <PID>
+
+# 启动新进程
+cd backend
+npm start &
+```
+
+### 步骤 8: 重新加载 Nginx
 
 ```bash
-# 停止并删除旧容器
-docker stop tcm_frontend
-docker rm tcm_frontend
+# 重新加载 Nginx 配置
+nginx -s reload
 
-# 启动新容器
-docker run -d --name tcm_frontend \
-  --network tcm_network \
-  --restart unless-stopped \
-  tcm-frontend
+# 或使用 systemctl
+systemctl reload nginx
 ```
 
 ### 步骤 9: 验证更新
 
 ```bash
-# 检查容器状态
-docker ps
-
 # 检查后端健康状态
 curl http://localhost:3001/health
 
 # 检查 Nginx 健康状态
 curl http://localhost/health
 
-# 查看后端日志
-docker logs -f tcm_backend
+# 查看后端日志（PM2）
+pm2 logs tcm-backend
+
+# 或查看 systemd 日志
+journalctl -u tcm-backend -f
 ```
 
 ---
 
-## 仅更新代码（不重建镜像）
+## 仅更新代码（不重新构建）
 
-如果只是更新了代码，没有修改依赖或配置，可以只重启容器：
+如果只是更新了代码，没有修改依赖，可以只重启服务：
 
 ```bash
 cd /opt/tcmbaocai
@@ -145,14 +180,19 @@ cd /opt/tcmbaocai
 # 拉取最新代码
 git pull origin main
 
-# 重启容器（会使用现有镜像）
-docker restart tcm_backend tcm_frontend
+# 重启后端服务
+pm2 restart tcm-backend
+# 或
+systemctl restart tcm-backend
+
+# 重新加载 Nginx
+nginx -s reload
 ```
 
 **注意：** 这种方式只适用于：
 - 仅修改了代码文件
-- 没有修改 `package.json`、`Dockerfile` 或环境变量
-- 前端是静态文件，需要重新构建
+- 没有修改 `package.json` 或依赖
+- 后端代码已编译（TypeScript → JavaScript）
 
 ---
 
@@ -166,16 +206,14 @@ cd /opt/tcmbaocai
 # 拉取最新代码
 git pull origin main
 
-# 重新构建前端镜像
-docker build -t tcm-frontend .
+# 安装依赖（如果需要）
+npm install
 
-# 重启前端容器
-docker stop tcm_frontend
-docker rm tcm_frontend
-docker run -d --name tcm_frontend \
-  --network tcm_network \
-  --restart unless-stopped \
-  tcm-frontend
+# 重新构建前端
+npm run build
+
+# 重新加载 Nginx（前端是静态文件，由 Nginx 服务）
+nginx -s reload
 ```
 
 ---
@@ -190,18 +228,22 @@ cd /opt/tcmbaocai
 # 拉取最新代码
 git pull origin main
 
-# 重新构建后端镜像
-docker build -t tcm-backend ./backend
+# 进入后端目录
+cd backend
 
-# 重启后端容器
-docker stop tcm_backend
-docker rm tcm_backend
-docker run -d --name tcm_backend \
-  -p 3001:3001 \
-  --env-file ./backend/.env \
-  --network tcm_network \
-  --restart unless-stopped \
-  tcm-backend
+# 安装依赖（如果需要）
+npm install
+
+# 生成 Prisma Client（如果数据库 schema 有变化）
+npx prisma generate
+
+# 重新构建后端
+npm run build
+
+# 重启后端服务
+pm2 restart tcm-backend
+# 或
+systemctl restart tcm-backend
 ```
 
 ---
@@ -221,47 +263,77 @@ git config --list
 # 或者使用 SSH 密钥
 ```
 
-### 问题 2: Docker 构建失败
+### 问题 2: npm install 失败
 
 **排查：**
 ```bash
-# 查看详细构建日志
-docker build -t tcm-backend ./backend --no-cache
+# 检查 Node.js 和 npm 版本
+node --version
+npm --version
+
+# 清理 npm 缓存
+npm cache clean --force
+
+# 删除 node_modules 重新安装
+rm -rf node_modules package-lock.json
+npm install
+```
+
+### 问题 3: 构建失败
+
+**排查：**
+```bash
+# 查看详细错误信息
+npm run build 2>&1 | tee build.log
 
 # 检查磁盘空间
 df -h
 
-# 清理未使用的镜像
-docker system prune -a
+# 检查内存
+free -h
+
+# 清理未使用的包
+npm prune
 ```
 
-### 问题 3: 容器启动失败
+### 问题 4: 服务启动失败
 
 **排查：**
 ```bash
-# 查看容器日志
-docker logs tcm_backend
+# 查看 PM2 日志
+pm2 logs tcm-backend
+
+# 查看 systemd 日志
+journalctl -u tcm-backend -n 50
 
 # 检查环境变量文件
 cat backend/.env
 
-# 检查网络
-docker network inspect tcm_network
+# 检查端口占用
+netstat -tulpn | grep 3001
+lsof -i :3001
 ```
 
-### 问题 4: 服务无法访问
+### 问题 5: 服务无法访问
 
 **排查：**
 ```bash
-# 检查容器状态
-docker ps -a
+# 检查服务状态
+pm2 status
+# 或
+systemctl status tcm-backend
 
-# 检查端口占用
+# 检查端口监听
 netstat -tulpn | grep 3001
 netstat -tulpn | grep 80
 
 # 检查防火墙
 iptables -L -n
+firewall-cmd --list-all  # CentOS/RHEL
+ufw status  # Ubuntu/Debian
+
+# 检查 Nginx 配置
+nginx -t
 ```
 
 ---
@@ -302,9 +374,16 @@ git log --oneline -10
 git reset --hard abc1234
 
 # 重新构建和重启（参考上面的步骤）
-docker build -t tcm-backend ./backend
-docker build -t tcm-frontend .
-# ... 重启容器
+cd backend
+npm install
+npx prisma generate
+npm run build
+pm2 restart tcm-backend
+
+cd ..
+npm install
+npm run build
+nginx -s reload
 ```
 
 ---
@@ -318,8 +397,13 @@ docker build -t tcm-frontend .
 crontab -e
 
 # 添加以下行（每天凌晨 2 点自动更新）
-0 2 * * * cd /opt/tcmbaocai && ./update.sh >> /var/log/tcm-update.log 2>&1
+0 2 * * * cd /opt/tcmbaocai && /bin/bash ./update.sh >> /var/log/tcm-update.log 2>&1
 ```
+
+**注意：** 自动更新前请确保：
+- 更新脚本有执行权限：`chmod +x update.sh`
+- 日志目录存在：`mkdir -p /var/log`
+- 测试脚本可以正常运行
 
 ---
 
